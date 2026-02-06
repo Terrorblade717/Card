@@ -1,0 +1,13 @@
+{
+  "deck": {
+    "Tank": "Warden",
+    "Fighter": "Ravager",
+    "DPS": "Reaper",
+    "Mage": "Voidcaster",
+    "Support": "Harmonist"
+  },
+  "rating": 165,
+  "battles_used": 20,
+  "extra_battles": 0,
+  "season_start": "2026-01-24T18:59:07.263278"
+}

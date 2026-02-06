@@ -1,0 +1,43 @@
+{
+  "703816037": {
+    "rating": 0,
+    "ton_balance": 0.0,
+    "deck": {},
+    "battles_used": 0,
+    "extra_battles": 0
+  },
+  "558527025": {
+    "rating": 0,
+    "ton_balance": 0.0,
+    "deck": {},
+    "battles_used": 0,
+    "extra_battles": 0
+  },
+  "6920748953": {
+    "rating": 0,
+    "ton_balance": 0.0,
+    "deck": {},
+    "battles_used": 0,
+    "extra_battles": 0
+  },
+  "123456789": {
+    "rating": 280,
+    "ton_balance": 0.0,
+    "deck": {
+      "Tank": "Bulwark",
+      "Fighter": "Vanguard",
+      "DPS": "Blade",
+      "Mage": "Summoner",
+      "Support": "Protector"
+    },
+    "battles_used": 12,
+    "extra_battles": 0
+  },
+  "123455789": {
+    "rating": 0,
+    "ton_balance": 0.0,
+    "deck": {},
+    "battles_used": 0,
+    "extra_battles": 0
+  }
+}

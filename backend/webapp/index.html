@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TON Arena</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #121212;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #4CAF50;
+        }
+        .stats {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            margin: 10px 0;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            background: #2a2a2a;
+            color: white;
+        }
+        .btn:hover:not(:disabled) {
+            background: #3a3a3a;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #log {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        select, button {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            border: 1px solid #333;
+            background: #2a2a2a;
+            color: white;
+        }
+
+        /* Стили для поля боя */
+        .hero-card {
+            background: #2a2a2a;
+            border: 2px solid #4CAF50;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 5px 0;
+            text-align: center;
+            position: relative;
+            transition: transform 0.2s;
+        }
+        .hero-card.enemy {
+            border-color: #f44336;
+        }
+        .hp-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #333;
+            border-radius: 0 0 10px 10px;
+        }
+        .hp-fill {
+            height: 100%;
+            background: #4CAF50;
+            border-radius: 0 0 10px 10px;
+            transition: width 0.3s;
+        }
+        .hero-card.enemy .hp-fill {
+            background: #f44336;
+        }
+        #battleScene {
+            display: none;
+            width: 100%;
+            margin-top: 20px;
+        }
+        #battleLog {
+            margin-top: 15px;
+            min-height: 60px;
+            background: #1e1e1e;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .damage-popup {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 0, 0, 0.8);
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+            animation: floatUp 1s forwards;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; top: -20px; }
+            100% { opacity: 0; top: -60px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚔️ TON Arena</h1>
+        
+        <div class="stats" id="stats">
+            Загрузка...
+        </div>
+
+        <button class="btn" onclick="showDeckBuilder()">🃏 Собрать колоду</button>
+        <button class="btn" onclick="startBattle()" id="battleBtn" disabled>⚔️ В бой</button>
+        <button class="btn" onclick="showRating()">📊 Рейтинг</button>
+        <button class="btn" onclick="showShop()">💎 Магазин</button>
+
+        <!-- Поле боя (скрыто по умолчанию) -->
+        <div id="battleScene">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div id="teamA" style="width:45%;"></div>
+                <div style="font-size:24px; color:#4CAF50;">⚔️</div>
+                <div id="teamB" style="width:45%; text-align:right;"></div>
+            </div>
+            <div id="battleLog"></div>
+        </div>
+
+        <div id="content"></div>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
+        let isAnimating = false;
+
+        // === НАСТРОЙКИ ===
+        const API_URL = '';
+        const FAKE_USER_ID = '123456789';
+
+        let userData = null;
+        let currentDeck = {};
+
+        // Герои по ролям
+        const HEROES_BY_ROLE = {
+            "Tank": ["Bulwark", "Sentinel", "Ironbound", "Shieldbearer", "Warden"],
+            "Fighter": ["Vanguard", "Skirmisher", "Duelist", "Breaker", "Ravager"],
+            "DPS": ["Striker", "Blade", "Lurker", "Marksman", "Reaper"],
+            "Mage": ["Arcanist", "Hexer", "Channeler", "Summoner", "Voidcaster"],
+            "Support": ["Medic", "Enhancer", "Protector", "Oracle", "Harmonist"]
+        };
+
+        // Статы героев (max_hp)
+        const HERO_STATS = {
+            "Bulwark": 180, "Sentinel": 160, "Ironbound": 170, "Shieldbearer": 165, "Warden": 200,
+            "Vanguard": 130, "Skirmisher": 120, "Duelist": 115, "Breaker": 125, "Ravager": 130,
+            "Striker": 100, "Blade": 100, "Lurker": 95, "Marksman": 105, "Reaper": 100,
+            "Arcanist": 100, "Hexer": 105, "Channeler": 110, "Summoner": 100, "Voidcaster": 100,
+            "Medic": 120, "Enhancer": 110, "Protector": 120, "Oracle": 105, "Harmonist": 115
+        };
+
+        // === ИНИЦИАЛИЗАЦИЯ ===
+        async function init() {
+            await loadUserData();
+            updateUI();
+        }
+
+        async function loadUserData() {
+            try {
+                const res = await fetch(`/api/user?user_id=${FAKE_USER_ID}`);
+                userData = await res.json();
+                if (userData.deck) {
+                    currentDeck = userData.deck;
+                }
+            } catch (e) {
+                document.getElementById('stats').innerHTML = '❌ Ошибка подключения к серверу';
+                console.error(e);
+            }
+        }
+
+        function updateUI() {
+            if (!userData) return;
+            
+            const stats = document.getElementById('stats');
+            stats.innerHTML = `
+                🏆 Рейтинг: ${userData.rating}<br>
+                ⚔️ Боёв осталось: ${userData.battles_left}<br>
+                💰 Баланс: ${userData.ton_balance} TON
+            `;
+
+            const battleBtn = document.getElementById('battleBtn');
+            battleBtn.disabled = !userData.deck || Object.keys(userData.deck).length === 0 || userData.battles_left <= 0;
+        }
+
+        // === СОБРАТЬ КОЛОДУ ===
+        function showDeckBuilder() {
+            let html = '<h3>Выберите героев:</h3>';
+            for (const [role, heroes] of Object.entries(HEROES_BY_ROLE)) {
+                const selected = currentDeck[role] || heroes[0];
+                html += `
+                    <label>${role}:</label>
+                    <select onchange="updateDeck('${role}', this.value)">
+                        ${heroes.map(h => 
+                            `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}</option>`
+                        ).join('')}
+                    </select>
+                `;
+            }
+            html += `<button class="btn" onclick="saveDeck()">💾 Сохранить колоду</button>`;
+            document.getElementById('content').innerHTML = html;
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('battleScene').style.display = 'none';
+        }
+
+        function updateDeck(role, hero) {
+            currentDeck[role] = hero;
+        }
+
+        async function saveDeck() {
+            try {
+                const res = await fetch(`/api/deck?user_id=${FAKE_USER_ID}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({deck: currentDeck})
+                });
+                if (res.ok) {
+                    alert('✅ Колоду сохранена!');
+                    await loadUserData();
+                    updateUI();
+                } else {
+                    alert('❌ Ошибка сохранения');
+                }
+            } catch (e) {
+                alert('❌ Не удалось подключиться к серверу');
+                console.error(e);
+            }
+        }
+
+        // === АНИМИРОВАННЫЙ БОЙ ===
+        async function startBattle() {
+            if (!confirm('Начать бой?')) return;
+
+            document.getElementById('content').style.display = 'none';
+            document.getElementById('log').style.display = 'none';
+            document.getElementById('battleScene').style.display = 'block';
+            document.getElementById('battleLog').textContent = 'Бой начался...';
+
+            try {
+                const res = await fetch(`/api/battle?user_id=${FAKE_USER_ID}`, { method: 'POST' });
+                const data = await res.json();
+
+                const teamA = Object.values(currentDeck);
+                const teamB = ["Bulwark", "Vanguard", "Striker", "Arcanist", "Medic"];
+
+                let hpA = {};
+                let hpB = {};
+                teamA.forEach(name => hpA[name] = HERO_STATS[name]);
+                teamB.forEach(name => hpB[name] = HERO_STATS[name]);
+
+                renderTeam('teamA', teamA, hpA, true);
+                renderTeam('teamB', teamB, hpB, false);
+
+                let eventIndex = 0;
+                const events = data.events || [];
+
+                const processEvent = () => {
+                    if (eventIndex >= events.length) {
+                        const result = data.winner ? 
+                            `🏆 ПОБЕДА! Новый рейтинг: ${data.new_rating}` : 
+                            `💀 ПОРАЖЕНИЕ. Новый рейтинг: ${data.new_rating}`;
+                        document.getElementById('battleLog').innerHTML = `<b>${result}</b>`;
+                        
+                        setTimeout(() => {
+                            loadUserData();
+                            updateUI();
+                            document.getElementById('battleScene').style.display = 'none';
+                            document.getElementById('content').style.display = 'block';
+                            document.getElementById('log').style.display = 'block';
+                        }, 3000);
+                        return;
+                    }
+
+                    const ev = events[eventIndex];
+                    let logText = '';
+
+                    if (ev.type === "attack") {
+                        logText = `${ev.attacker} нанёс ${ev.damage} урона ${ev.target}!`;
+                        
+                        const isAllyAttacker = teamA.includes(ev.attacker);
+                        const isAllyTarget = teamA.includes(ev.target);
+                        animateAttack(ev.attacker, ev.target, isAllyAttacker, isAllyTarget);
+
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                            renderTeam('teamB', teamB, hpB, false);
+                            showDamagePopup(ev.target, ev.damage, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                            renderTeam('teamA', teamA, hpA, true);
+                            showDamagePopup(ev.target, ev.damage, true);
+                        }
+                    } 
+                    else if (ev.type === "execute") {
+                        logText = `${ev.target} был уничтожен!`;
+                    }
+
+                    document.getElementById('battleLog').textContent = logText;
+                    eventIndex++;
+                    setTimeout(processEvent, 800);
+                };
+
+                setTimeout(processEvent, 1000);
+
+            } catch (e) {
+                alert('❌ Ошибка боя');
+                console.error(e);
+                document.getElementById('battleScene').style.display = 'none';
+                document.getElementById('content').style.display = 'block';
+                document.getElementById('log').style.display = 'block';
+            }
+        }
+
+        function renderTeam(containerId, heroes, hpMap, isAlly) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = heroes.map(name => {
+                const maxHp = HERO_STATS[name] || 100;
+                const currentHp = hpMap[name] || 0;
+                const percent = Math.max(0, (currentHp / maxHp) * 100);
+                const borderColor = isAlly ? '#4CAF50' : '#f44336';
+                const cardClass = isAlly ? 'hero-card' : 'hero-card enemy';
+
+                const imgSrc = `/images/heroes/${name}.png`;
+
+                return `
+                    <div class="${cardClass}" data-name="${name}" style="border-color:${borderColor}; position:relative;">
+                        <img src="${imgSrc}" alt="${name}" 
+                             style="width:100%; height:80px; object-fit:cover; border-radius:8px; background:#333;">
+                        <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
+                        <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
+                        <div class="hp-bar">
+                            <div class="hp-fill" style="width:${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function showDamagePopup(heroName, damage, isAlly) {
+            const containerId = isAlly ? 'teamA' : 'teamB';
+            const container = document.getElementById(containerId);
+            const card = container.querySelector(`[data-name="${heroName}"]`);
+            if (!card) return;
+
+            card.style.boxShadow = '0 0 20px #ff0000';
+            card.style.transform = 'scale(1.1)';
+            
+            setTimeout(() => {
+                card.style.boxShadow = '';
+                card.style.transform = '';
+            }, 300);
+
+            const popup = document.createElement('div');
+            popup.className = 'damage-popup';
+            popup.textContent = `-${damage}`;
+            card.appendChild(popup);
+
+            setTimeout(() => {
+                if (popup.parentNode) popup.parentNode.removeChild(popup);
+            }, 1000);
+        }
+
+        function animateAttack(attackerName, targetName, isAllyAttacker, isAllyTarget) {
+            if (isAnimating) return;
+            isAnimating = true;
+
+            const attackerContainer = isAllyAttacker ? 'teamA' : 'teamB';
+            const targetContainer = isAllyTarget ? 'teamA' : 'teamB';
+            
+            const attackerCard = document.querySelector(`#${attackerContainer} [data-name="${attackerName}"]`);
+            const targetCard = document.querySelector(`#${targetContainer} [data-name="${targetName}"]`);
+            
+            if (!attackerCard || !targetCard) {
+                isAnimating = false;
+                return;
+            }
+
+            const imgSrc = attackerCard.querySelector('img').src;
+            const clone = document.createElement('img');
+            clone.src = imgSrc;
+            clone.className = 'attack-clone';
+            clone.style.position = 'absolute';
+            clone.style.zIndex = '1000';
+            clone.style.width = '50px';
+            clone.style.height = '50px';
+            clone.style.borderRadius = '8px';
+            clone.style.pointerEvents = 'none';
+            clone.style.opacity = '0.9';
+            clone.style.boxShadow = '0 0 10px rgba(255,255,255,0.7)';
+
+            document.body.appendChild(clone);
+
+            const attackerRect = attackerCard.getBoundingClientRect();
+            const targetRect = targetCard.getBoundingClientRect();
+
+            const startX = attackerRect.left + window.scrollX + attackerRect.width / 2 - 25;
+            const startY = attackerRect.top + window.scrollY + attackerRect.height / 2 - 25;
+            const endX = targetRect.left + window.scrollX + targetRect.width / 2 - 25;
+            const endY = targetRect.top + window.scrollY + targetRect.height / 2 - 25;
+
+            clone.style.left = `${startX}px`;
+            clone.style.top = `${startY}px`;
+
+            const duration = 1000;
+            const startTime = performance.now();
+
+            const animate = (currentTime) => {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                const currentX = startX + (endX - startX) * progress;
+                const currentY = startY + (endY - startY) * progress;
+                
+                clone.style.left = `${currentX}px`;
+                clone.style.top = `${currentY}px`;
+                clone.style.opacity = `${0.9 * (1 - progress * 0.5)}`;
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    document.body.removeChild(clone);
+                    isAnimating = false;
+                }
+            };
+            
+            requestAnimationFrame(animate);
+        }
+
+        // === РЕЙТИНГ ===
+        async function showRating() {
+            try {
+                const res = await fetch(`/api/rating`);
+                const data = await res.json();
+                
+                let html = '<h3>🏆 Топ-10 игроков:</h3><ol>';
+                data.top.forEach((p, i) => {
+                    const isMe = p.user_id === FAKE_USER_ID;
+                    html += `<li>${isMe ? '<b>👤 Вы</b>' : `ID: ${p.user_id}`} — ${p.rating} очков</li>`;
+                });
+                html += '</ol>';
+                document.getElementById('content').innerHTML = html;
+                document.getElementById('log').innerHTML = '';
+                document.getElementById('battleScene').style.display = 'none';
+            } catch (e) {
+                alert('❌ Не удалось загрузить рейтинг');
+            }
+        }
+
+        // === МАГАЗИН ===
+        function showShop() {
+            const html = `
+                <h3>💎 Магазин</h3>
+                <p>Купить +5 боёв за 1 TON</p>
+                <button class="btn" disabled>Купить (пока недоступно)</button>
+                <p style="margin-top: 20px;">Косметика:</p>
+                <button class="btn" disabled>Рамка профиля — 0.5 TON</button>
+                <button class="btn" disabled>Анимация карт — 0.3 TON</button>
+            `;
+            document.getElementById('content').innerHTML = html;
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('battleScene').style.display = 'none';
+        }
+
+        // Запуск
+        init();
+    </script>
+</body>
+</html>
