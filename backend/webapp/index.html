@@ -135,6 +135,14 @@
             0% { opacity: 1; top: -20px; }
             100% { opacity: 0; top: -60px; }
         }
+        .skill-flash {
+            animation: skillFlash 0.6s ease-in-out;
+        }
+        @keyframes skillFlash {
+            0% { box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+            50% { box-shadow: 0 0 18px rgba(255, 255, 255, 0.9); }
+            100% { box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+        }
     </style>
 </head>
 <body>
@@ -191,6 +199,25 @@
             "Striker": 100, "Blade": 100, "Lurker": 95, "Marksman": 105, "Reaper": 100,
             "Arcanist": 100, "Hexer": 105, "Channeler": 110, "Summoner": 100, "Voidcaster": 100,
             "Medic": 120, "Enhancer": 110, "Protector": 120, "Oracle": 105, "Harmonist": 115
+        };
+
+        const SKILL_FX = {
+            taunt: { color: '#ffd54f' },
+            armor_aura: { color: '#42a5f5' },
+            reduce_enemy_damage: { color: '#ef5350' },
+            barrier: { color: '#81c784' },
+            thorns: { color: '#26c6da' },
+            line_pressure: { color: '#ff8a65' },
+            scaling: { color: '#ffb74d' },
+            debuff: { color: '#ab47bc' },
+            dot: { color: '#ef9a9a' },
+            silence: { color: '#90a4ae' },
+            aoe: { color: '#f06292' },
+            heal: { color: '#66bb6a' },
+            buff: { color: '#aed581' },
+            immortal: { color: '#b39ddb' },
+            stun: { color: '#4db6ac' },
+            aoe_stun: { color: '#4dd0e1' }
         };
 
         // === ИНИЦИАЛИЗАЦИЯ ===
@@ -283,13 +310,13 @@
                 const res = await fetch(`/api/battle?user_id=${FAKE_USER_ID}`, { method: 'POST' });
                 const data = await res.json();
 
-                const teamA = Object.values(currentDeck);
-                const teamB = ["Bulwark", "Vanguard", "Striker", "Arcanist", "Medic"];
+                const teamA = data.player_team || Object.values(currentDeck);
+                const teamB = data.enemy_team || ["Bulwark", "Vanguard", "Striker", "Arcanist", "Medic"];
 
                 let hpA = {};
                 let hpB = {};
-                teamA.forEach(name => hpA[name] = HERO_STATS[name]);
-                teamB.forEach(name => hpB[name] = HERO_STATS[name]);
+                teamA.forEach(name => hpA[name] = (data.player_max_hp && data.player_max_hp[name]) || HERO_STATS[name]);
+                teamB.forEach(name => hpB[name] = (data.enemy_max_hp && data.enemy_max_hp[name]) || HERO_STATS[name]);
 
                 renderTeam('teamA', teamA, hpA, true);
                 renderTeam('teamB', teamB, hpB, false);
@@ -336,6 +363,15 @@
                     } 
                     else if (ev.type === "execute") {
                         logText = `${ev.target} был уничтожен!`;
+                    } else if (ev.type === "skill") {
+                        logText = `${ev.hero} использует ${ev.ability}!`;
+                        playSkillFx(ev.hero, teamA.includes(ev.hero), ev.ability);
+                        if (Array.isArray(ev.targets)) {
+                            ev.targets.forEach(targetName => {
+                                const isAllyTarget = teamA.includes(targetName);
+                                playSkillFx(targetName, isAllyTarget, ev.ability);
+                            });
+                        }
                     }
 
                     document.getElementById('battleLog').textContent = logText;
@@ -467,6 +503,22 @@
             };
             
             requestAnimationFrame(animate);
+        }
+
+        function playSkillFx(heroName, isAlly, ability) {
+            const containerId = isAlly ? 'teamA' : 'teamB';
+            const container = document.getElementById(containerId);
+            const card = container.querySelector(`[data-name="${heroName}"]`);
+            if (!card) return;
+
+            const fx = SKILL_FX[ability] || { color: '#ffffff' };
+            card.classList.add('skill-flash');
+            card.style.boxShadow = `0 0 16px ${fx.color}`;
+
+            setTimeout(() => {
+                card.classList.remove('skill-flash');
+                card.style.boxShadow = '';
+            }, 600);
         }
 
         // === РЕЙТИНГ ===
