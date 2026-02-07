@@ -83,6 +83,7 @@
             text-align: center;
             position: relative;
             transition: transform 0.2s;
+            overflow: hidden;
         }
         .hero-card.enemy {
             border-color: #f44336;
@@ -109,6 +110,26 @@
             display: none;
             width: 100%;
             margin-top: 20px;
+        }
+        .battle-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: stretch;
+            gap: 12px;
+        }
+        #teamA,
+        #teamB {
+            width: 45%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #teamA {
+            align-items: flex-start;
+        }
+        #teamB {
+            align-items: flex-end;
+            text-align: right;
         }
         #battleLog {
             margin-top: 15px;
@@ -153,17 +174,19 @@
             Загрузка...
         </div>
 
-        <button class="btn" onclick="showDeckBuilder()">🃏 Собрать колоду</button>
-        <button class="btn" onclick="startBattle()" id="battleBtn" disabled>⚔️ В бой</button>
-        <button class="btn" onclick="showRating()">📊 Рейтинг</button>
-        <button class="btn" onclick="showShop()">💎 Магазин</button>
+        <div id="primaryActions">
+            <button class="btn" onclick="showDeckBuilder()">🃏 Собрать колоду</button>
+            <button class="btn" onclick="startBattle()" id="battleBtn" disabled>⚔️ В бой</button>
+            <button class="btn" onclick="showRating()">📊 Рейтинг</button>
+            <button class="btn" onclick="showShop()">💎 Магазин</button>
+        </div>
 
         <!-- Поле боя (скрыто по умолчанию) -->
         <div id="battleScene">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div id="teamA" style="width:45%;"></div>
+            <div class="battle-field">
+                <div id="teamA"></div>
                 <div style="font-size:24px; color:#4CAF50;">⚔️</div>
-                <div id="teamB" style="width:45%; text-align:right;"></div>
+                <div id="teamB"></div>
             </div>
             <div id="battleLog"></div>
         </div>
@@ -253,6 +276,16 @@
             battleBtn.disabled = !userData.deck || Object.keys(userData.deck).length === 0 || userData.battles_left <= 0;
         }
 
+        function hidePrimaryActions() {
+            const actions = document.getElementById('primaryActions');
+            if (actions) actions.style.display = 'none';
+        }
+
+        function showPrimaryActions() {
+            const actions = document.getElementById('primaryActions');
+            if (actions) actions.style.display = 'block';
+        }
+
         // === СОБРАТЬ КОЛОДУ ===
         function showDeckBuilder() {
             let html = '<h3>Выберите героев:</h3>';
@@ -304,6 +337,7 @@
             document.getElementById('content').style.display = 'none';
             document.getElementById('log').style.display = 'none';
             document.getElementById('battleScene').style.display = 'block';
+            hidePrimaryActions();
             document.getElementById('battleLog').textContent = 'Бой начался...';
 
             try {
@@ -337,6 +371,7 @@
                             document.getElementById('battleScene').style.display = 'none';
                             document.getElementById('content').style.display = 'block';
                             document.getElementById('log').style.display = 'block';
+                            showPrimaryActions();
                         }, 3000);
                         return;
                     }
@@ -387,6 +422,7 @@
                 document.getElementById('battleScene').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
                 document.getElementById('log').style.display = 'block';
+                showPrimaryActions();
             }
         }
 
@@ -404,7 +440,7 @@
                 return `
                     <div class="${cardClass}" data-name="${name}" style="border-color:${borderColor}; position:relative;">
                         <img src="${imgSrc}" alt="${name}" 
-                             style="width:100%; height:80px; object-fit:cover; border-radius:8px; background:#333;">
+                             style="width:120%; height:300px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
                         <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
                         <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
                         <div class="hp-bar">
