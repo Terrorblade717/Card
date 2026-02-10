@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 PLAYERS_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bot/players.json"))
 BASE_BATTLE_LIMIT = 20
 MAX_EXTRA_BATTLES = 5
+HP_REDUCTION_FACTOR = 1.5
 
 # =========================
 # МОДЕЛИ
@@ -105,6 +106,8 @@ class Hero:
         self.barrier = 0
         self.immortal = 0
         self.reflect = 0
+        self.dot_turns = 0
+        self.dot_damage = 0
         self.cooldown = 0
         self.alive = True
 
@@ -118,6 +121,8 @@ class Hero:
         self.barrier = 0
         self.immortal = 0
         self.reflect = 0
+        self.dot_turns = 0
+        self.dot_damage = 0
         self.cooldown = 0
         self.alive = True
 
@@ -172,7 +177,8 @@ def debuff(hero, allies, enemies):
 def dot(hero, allies, enemies):
     if enemies:
         target = random.choice(enemies)
-        target.take_damage(5)
+        target.dot_turns = 2
+        target.dot_damage = 5
         return {"targets": [target.name]}
     return None
 def silence(hero, allies, enemies):
@@ -220,7 +226,7 @@ HEROES = [
     Hero("Sentinel","Tank",160,8,5,3,armor_aura),
     Hero("Ironbound","Tank",170,7,6,2,reduce_enemy_damage),
     Hero("Shieldbearer","Tank",165,7,5,2,barrier),
-    Hero("Warden","Tank",200,6,4,1,thorns),
+    Hero("Warden","Tank",270,6,4,1,thorns),
     Hero("Vanguard","Fighter",130,13,4,4,line_pressure),
     Hero("Skirmisher","Fighter",120,14,3,5,None),
     Hero("Duelist","Fighter",115,15,3,5,None),
@@ -243,11 +249,46 @@ HEROES = [
     Hero("Harmonist","Support",115,7,3,3,aoe_stun),
 ]
 
+for hero in HEROES:
+    hero.max_hp = max(1, int(round(hero.max_hp / HP_REDUCTION_FACTOR)))
+    hero.hp = hero.max_hp
+
 def pick_target(attacker, enemies):
     if attacker.name == "Lurker":
         return min(enemies, key=lambda e: e.hp)
     taunters = [e for e in enemies if e.taunt]
     return random.choice(taunters if taunters else enemies)
+
+
+def apply_dot_tick(hero, events):
+    if hero.alive and hero.dot_turns > 0 and hero.dot_damage > 0:
+        old_hp = hero.hp
+        hero.take_damage(hero.dot_damage, ignore_armor=True)
+        hero.dot_turns -= 1
+        damage = old_hp - hero.hp
+        if damage > 0:
+            events.append({
+                "type": "dot",
+                "target": hero.name,
+                "damage": damage,
+                "target_hp": hero.hp,
+            })
+
+
+def trigger_reaper_execute(reaper_team, enemy_team, events):
+    reapers = [h for h in reaper_team if h.alive and h.name == "Reaper"]
+    if not reapers:
+        return
+    reaper = reapers[0]
+    for e in enemy_team:
+        if e.alive and e.hp > 0 and (e.hp / e.max_hp) < 0.25 and random.random() < 0.2:
+            e.hp = 0
+            e.alive = False
+            events.append({
+                "type": "execute",
+                "attacker": reaper.name,
+                "target": e.name,
+            })
 
 def simulate_battle(team_a, team_b, logger=None):
     if logger is None:
@@ -264,6 +305,9 @@ def simulate_battle(team_a, team_b, logger=None):
         units = sorted(alive_units, key=lambda x: -x.speed)
         for h in units:
             if not h.alive: continue
+            apply_dot_tick(h, events)
+            if not h.alive:
+                continue
             if h.stun > 0:
                 h.stun = 0
                 continue
@@ -302,16 +346,21 @@ def simulate_battle(team_a, team_b, logger=None):
                     "damage": damage_dealt,
                     "target_hp": target.hp
                 })
-            
-            if h.name == "Reaper":
-                for e in enemies:
-                    if e.alive and e.hp > 0 and (e.hp / e.max_hp) < 0.25 and random.random() < 0.2:
-                        e.hp = 0
-                        e.alive = False
+
+                if target.reflect > 0 and h.alive:
+                    reflected_damage = max(1, int(round(damage_dealt * target.reflect)))
+                    old_attacker_hp = h.hp
+                    h.take_damage(reflected_damage, ignore_armor=True)
+                    reflected = old_attacker_hp - h.hp
+                    if reflected > 0:
                         events.append({
-                            "type": "execute",
-                            "target": e.name
+                            "type": "reflect",
+                            "attacker": target.name,
+                            "target": h.name,
+                            "damage": reflected,
+                            "target_hp": h.hp,
                         })
+            
             if h.name == "Duelist":
                 h.atk += 2
             if h.name == "Striker":
@@ -328,6 +377,9 @@ def simulate_battle(team_a, team_b, logger=None):
                         "damage": extra_dmg,
                         "target_hp": target.hp
                     })
+
+            trigger_reaper_execute(team_a, team_b, events)
+            trigger_reaper_execute(team_b, team_a, events)
         if not any(e.alive for e in team_b):
             events.append({"type": "end", "winner": True})
             return True, events

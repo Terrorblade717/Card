@@ -114,22 +114,32 @@
         .battle-field {
             display: flex;
             justify-content: space-between;
-            align-items: stretch;
-            gap: 12px;
+            align-items: flex-start;
+            gap: 40px;
         }
         #teamA,
         #teamB {
-            width: 45%;
+            width: calc(50% - 60px);
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             gap: 12px;
+            overflow-x: auto;
+            padding-bottom: 4px;
         }
         #teamA {
-            align-items: flex-start;
+            justify-content: flex-start;
         }
         #teamB {
-            align-items: flex-end;
-            text-align: right;
+            justify-content: flex-end;
+            direction: rtl;
+        }
+        #teamB .hero-card {
+            direction: ltr;
+            text-align: center;
+        }
+        .hero-card {
+            min-width: 120px;
+            max-width: 120px;
         }
         #battleLog {
             margin-top: 15px;
@@ -217,11 +227,11 @@
 
         // Статы героев (max_hp)
         const HERO_STATS = {
-            "Bulwark": 180, "Sentinel": 160, "Ironbound": 170, "Shieldbearer": 165, "Warden": 200,
-            "Vanguard": 130, "Skirmisher": 120, "Duelist": 115, "Breaker": 125, "Ravager": 130,
-            "Striker": 100, "Blade": 100, "Lurker": 95, "Marksman": 105, "Reaper": 100,
-            "Arcanist": 100, "Hexer": 105, "Channeler": 110, "Summoner": 100, "Voidcaster": 100,
-            "Medic": 120, "Enhancer": 110, "Protector": 120, "Oracle": 105, "Harmonist": 115
+            "Bulwark": 120, "Sentinel": 107, "Ironbound": 113, "Shieldbearer": 110, "Warden": 180,
+            "Vanguard": 87, "Skirmisher": 80, "Duelist": 77, "Breaker": 83, "Ravager": 87,
+            "Striker": 67, "Blade": 67, "Lurker": 63, "Marksman": 70, "Reaper": 67,
+            "Arcanist": 67, "Hexer": 70, "Channeler": 73, "Summoner": 67, "Voidcaster": 67,
+            "Medic": 80, "Enhancer": 73, "Protector": 80, "Oracle": 70, "Harmonist": 77
         };
 
         const SKILL_FX = {
@@ -396,8 +406,39 @@
                             showDamagePopup(ev.target, ev.damage, true);
                         }
                     } 
+                    else if (ev.type === "dot") {
+                        logText = `${ev.target} получает ${ev.damage} урона от эффекта!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                            renderTeam('teamB', teamB, hpB, false);
+                            showDamagePopup(ev.target, ev.damage, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                            renderTeam('teamA', teamA, hpA, true);
+                            showDamagePopup(ev.target, ev.damage, true);
+                        }
+                    }
+                    else if (ev.type === "reflect") {
+                        logText = `${ev.attacker} отражает ${ev.damage} урона в ${ev.target}!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                            renderTeam('teamB', teamB, hpB, false);
+                            showDamagePopup(ev.target, ev.damage, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                            renderTeam('teamA', teamA, hpA, true);
+                            showDamagePopup(ev.target, ev.damage, true);
+                        }
+                    }
                     else if (ev.type === "execute") {
-                        logText = `${ev.target} был уничтожен!`;
+                        logText = `${ev.target} был уничтожен ${ev.attacker ? ev.attacker : 'Reaper'}!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = 0;
+                            renderTeam('teamB', teamB, hpB, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = 0;
+                            renderTeam('teamA', teamA, hpA, true);
+                        }
                     } else if (ev.type === "skill") {
                         logText = `${ev.hero} использует ${ev.ability}!`;
                         playSkillFx(ev.hero, teamA.includes(ev.hero), ev.ability);
@@ -440,7 +481,7 @@
                 return `
                     <div class="${cardClass}" data-name="${name}" style="border-color:${borderColor}; position:relative;">
                         <img src="${imgSrc}" alt="${name}" 
-                             style="width:120%; height:300px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
+                             style="width:120%; height:220px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
                         <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
                         <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
                         <div class="hp-bar">
