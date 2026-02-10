@@ -253,6 +253,22 @@
             aoe_stun: { color: '#4dd0e1' }
         };
 
+        // === КАРКАС ДЛЯ БУДУЩИХ АССЕТОВ ===
+        const ASSET_PATHS = {
+            heroes: '/assets/heroes',
+            icons: '/assets/ui/icons',
+            backgrounds: '/assets/backgrounds',
+            skillVideos: '/assets/video/skills',
+            hitVideos: '/assets/video/hits'
+        };
+
+        const MENU_ICONS = {
+            deck: `${ASSET_PATHS.icons}/deck.svg`,
+            battle: `${ASSET_PATHS.icons}/battle.svg`,
+            rating: `${ASSET_PATHS.icons}/rating.svg`,
+            shop: `${ASSET_PATHS.icons}/shop.svg`
+        };
+
         // === ИНИЦИАЛИЗАЦИЯ ===
         async function init() {
             await loadUserData();
@@ -441,6 +457,8 @@
                         }
                     } else if (ev.type === "skill") {
                         logText = `${ev.hero} использует ${ev.ability}!`;
+                        // Каркас под видео-скиллы (пока без обязательного внедрения ассетов)
+                        playSkillVideoFx(ev.ability);
                         playSkillFx(ev.hero, teamA.includes(ev.hero), ev.ability);
                         if (Array.isArray(ev.targets)) {
                             ev.targets.forEach(targetName => {
@@ -596,6 +614,14 @@
                 card.classList.remove('skill-flash');
                 card.style.boxShadow = '';
             }, 600);
+        }
+
+        // Каркас: когда будут готовы webm/mp4 клипы скиллов,
+        // достаточно включить эту функцию в полноценный режим.
+        function playSkillVideoFx(ability) {
+            const videoPath = `${ASSET_PATHS.skillVideos}/${ability}.webm`;
+            // Временный no-op с логом, чтобы было видно, какой файл ожидается
+            console.debug(`Skill video placeholder: ${videoPath}`);
         }
 
         // === РЕЙТИНГ ===
