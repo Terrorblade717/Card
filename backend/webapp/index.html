@@ -18,7 +18,7 @@
         }
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 1400px;
         }
         h1 {
             text-align: center;
@@ -83,6 +83,7 @@
             text-align: center;
             position: relative;
             transition: transform 0.2s;
+            overflow: hidden;
         }
         .hero-card.enemy {
             border-color: #f44336;
@@ -110,6 +111,59 @@
             width: 100%;
             margin-top: 20px;
         }
+        .battle-field {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+        #teamA,
+        #teamB {
+            width: 100%;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: stretch;
+            gap: 16px;
+            flex-wrap: nowrap;
+        }
+        #teamA::before,
+        #teamB::before {
+            content: attr(data-label);
+            position: absolute;
+            margin-top: -24px;
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        #teamA, #teamB {
+            position: relative;
+            padding-top: 20px;
+        }
+        .hero-card {
+            min-width: 240px;
+            max-width: 240px;
+        }
+        .role-block { background:#1c1c1c; border:1px solid #333; border-radius:12px; padding:12px; margin-bottom:10px; }
+        .role-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+        .pick-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+        .pick-card {
+            width: 180px;
+            background:#242424;
+            border:1px solid #3a3a3a;
+            border-radius:10px;
+            overflow:hidden;
+            cursor:pointer;
+        }
+        .pick-card img { width:100%; height:180px; object-fit:cover; display:block; }
+        .pick-card .meta { padding:8px; font-size:12px; }
+        .pick-card.active { border-color:#4CAF50; box-shadow:0 0 12px rgba(76,175,80,.5); }
+
+        @media (max-width: 1280px) {
+            .hero-card {
+                min-width: 18.5vw;
+                max-width: 18.5vw;
+            }
+        }
         #battleLog {
             margin-top: 15px;
             min-height: 60px;
@@ -135,6 +189,14 @@
             0% { opacity: 1; top: -20px; }
             100% { opacity: 0; top: -60px; }
         }
+        .skill-flash {
+            animation: skillFlash 0.6s ease-in-out;
+        }
+        @keyframes skillFlash {
+            0% { box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+            50% { box-shadow: 0 0 18px rgba(255, 255, 255, 0.9); }
+            100% { box-shadow: 0 0 0 rgba(255, 255, 255, 0); }
+        }
     </style>
 </head>
 <body>
@@ -145,17 +207,19 @@
             Загрузка...
         </div>
 
-        <button class="btn" onclick="showDeckBuilder()">🃏 Собрать колоду</button>
-        <button class="btn" onclick="startBattle()" id="battleBtn" disabled>⚔️ В бой</button>
-        <button class="btn" onclick="showRating()">📊 Рейтинг</button>
-        <button class="btn" onclick="showShop()">💎 Магазин</button>
+        <div id="primaryActions">
+            <button class="btn" onclick="showDeckBuilder()">🃏 Собрать колоду</button>
+            <button class="btn" onclick="startBattle()" id="battleBtn" disabled>⚔️ В бой</button>
+            <button class="btn" onclick="showRating()">📊 Рейтинг</button>
+            <button class="btn" onclick="showShop()">💎 Магазин</button>
+        </div>
 
         <!-- Поле боя (скрыто по умолчанию) -->
         <div id="battleScene">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div id="teamA" style="width:45%;"></div>
+            <div class="battle-field">
+                <div id="teamB" data-label="Вражеская команда"></div>
                 <div style="font-size:24px; color:#4CAF50;">⚔️</div>
-                <div id="teamB" style="width:45%; text-align:right;"></div>
+                <div id="teamA" data-label="Моя команда"></div>
             </div>
             <div id="battleLog"></div>
         </div>
@@ -186,12 +250,77 @@
 
         // Статы героев (max_hp)
         const HERO_STATS = {
-            "Bulwark": 180, "Sentinel": 160, "Ironbound": 170, "Shieldbearer": 165, "Warden": 200,
-            "Vanguard": 130, "Skirmisher": 120, "Duelist": 115, "Breaker": 125, "Ravager": 130,
-            "Striker": 100, "Blade": 100, "Lurker": 95, "Marksman": 105, "Reaper": 100,
-            "Arcanist": 100, "Hexer": 105, "Channeler": 110, "Summoner": 100, "Voidcaster": 100,
-            "Medic": 120, "Enhancer": 110, "Protector": 120, "Oracle": 105, "Harmonist": 115
+            "Bulwark": 120, "Sentinel": 107, "Ironbound": 113, "Shieldbearer": 110, "Warden": 180,
+            "Vanguard": 87, "Skirmisher": 80, "Duelist": 77, "Breaker": 83, "Ravager": 87,
+            "Striker": 67, "Blade": 67, "Lurker": 63, "Marksman": 70, "Reaper": 67,
+            "Arcanist": 67, "Hexer": 70, "Channeler": 73, "Summoner": 67, "Voidcaster": 67,
+            "Medic": 80, "Enhancer": 73, "Protector": 80, "Oracle": 70, "Harmonist": 77
         };
+
+        const SKILL_FX = {
+            taunt: { color: '#ffd54f' },
+            armor_aura: { color: '#42a5f5' },
+            reduce_enemy_damage: { color: '#ef5350' },
+            barrier: { color: '#81c784' },
+            thorns: { color: '#26c6da' },
+            line_pressure: { color: '#ff8a65' },
+            scaling: { color: '#ffb74d' },
+            debuff: { color: '#ab47bc' },
+            dot: { color: '#ef9a9a' },
+            silence: { color: '#90a4ae' },
+            aoe: { color: '#f06292' },
+            heal: { color: '#66bb6a' },
+            buff: { color: '#aed581' },
+            immortal: { color: '#b39ddb' },
+            stun: { color: '#4db6ac' },
+            aoe_stun: { color: '#4dd0e1' }
+        };
+
+        // === КАРКАС ДЛЯ БУДУЩИХ АССЕТОВ ===
+        const ASSET_PATHS = {
+            heroes: '/assets/heroes',
+            icons: '/assets/ui/icons',
+            backgrounds: '/assets/backgrounds',
+            skillVideos: '/assets/video/skills',
+            hitVideos: '/assets/video/hits'
+        };
+
+        const MENU_ICONS = {
+            deck: `${ASSET_PATHS.icons}/deck.svg`,
+            battle: `${ASSET_PATHS.icons}/battle.svg`,
+            rating: `${ASSET_PATHS.icons}/rating.svg`,
+            shop: `${ASSET_PATHS.icons}/shop.svg`
+        };
+
+        const HERO_ABILITIES = {
+            Bulwark: 'Провокация (таунт) и высокий запас брони.',
+            Sentinel: 'Повышает броню союзных героев.',
+            Ironbound: 'Снижает урон вражеской команды.',
+            Shieldbearer: 'Даёт барьер на здоровье.',
+            Warden: 'Отражает часть входящего урона.',
+            Vanguard: 'Усиливает давление по ходу боя.',
+            Skirmisher: 'Сбалансированный по скорости и урону.',
+            Duelist: 'После каждой атаки получает +2 к урону.',
+            Breaker: 'Игнорирует броню цели.',
+            Ravager: 'Постепенно наращивает атаку.',
+            Striker: 'Каждый ход получает +1 к скорости.',
+            Blade: '25% шанс нанести двойной урон.',
+            Lurker: 'Всегда выбирает цель с наименьшим HP.',
+            Marksman: '10% шанс полностью избежать урона.',
+            Reaper: 'В начале своего хода добивает ослабленных врагов.',
+            Arcanist: '25% шанс провести вторую атаку.',
+            Hexer: 'Ослабляет защиту врага (дебафф).',
+            Channeler: 'Накладывает урон со временем.',
+            Summoner: 'Накладывает запрет на способности.',
+            Voidcaster: 'Бьёт по площади.',
+            Medic: 'Лечит самого раненого союзника.',
+            Enhancer: 'Баффает атаку команды.',
+            Protector: 'Даёт защиту от смерти на 1 удар.',
+            Oracle: 'Оглушает одну цель.',
+            Harmonist: 'Массовый стан по всем врагам.'
+        };
+
+        let activeRole = null;
 
         // === ИНИЦИАЛИЗАЦИЯ ===
         async function init() {
@@ -223,34 +352,82 @@
             `;
 
             const battleBtn = document.getElementById('battleBtn');
-            battleBtn.disabled = !userData.deck || Object.keys(userData.deck).length === 0 || userData.battles_left <= 0;
+            battleBtn.disabled = !isDeckComplete(userData.deck) || userData.battles_left <= 0;
+        }
+
+        function isDeckComplete(deckObj = currentDeck) {
+            const roles = ["Tank", "Fighter", "DPS", "Mage", "Support"];
+            return roles.every(role => !!deckObj?.[role]);
+        }
+
+        function hidePrimaryActions() {
+            const actions = document.getElementById('primaryActions');
+            if (actions) actions.style.display = 'none';
+        }
+
+        function showPrimaryActions() {
+            const actions = document.getElementById('primaryActions');
+            if (actions) actions.style.display = 'block';
         }
 
         // === СОБРАТЬ КОЛОДУ ===
         function showDeckBuilder() {
-            let html = '<h3>Выберите героев:</h3>';
-            for (const [role, heroes] of Object.entries(HEROES_BY_ROLE)) {
-                const selected = currentDeck[role] || heroes[0];
+            let html = '<h3>Соберите колоду (1 герой на роль):</h3>';
+            for (const role of Object.keys(HEROES_BY_ROLE)) {
+                const selected = currentDeck[role];
                 html += `
-                    <label>${role}:</label>
-                    <select onchange="updateDeck('${role}', this.value)">
-                        ${heroes.map(h => 
-                            `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}</option>`
-                        ).join('')}
-                    </select>
+                    <div class="role-block">
+                        <div class="role-head">
+                            <div>
+                                <b>${role}</b><br>
+                                <small>${selected ? `Выбран: ${selected}` : 'Герой не выбран'}</small>
+                            </div>
+                            <button class="btn" onclick="openRolePicker('${role}')">Выбрать ${role}</button>
+                        </div>
+                    </div>
                 `;
             }
-            html += `<button class="btn" onclick="saveDeck()">💾 Сохранить колоду</button>`;
+
+            if (activeRole) {
+                html += `<h4>Выбор роли: ${activeRole}</h4><div class="pick-grid">`;
+                html += HEROES_BY_ROLE[activeRole].map(hero => {
+                    const isSelected = currentDeck[activeRole] === hero;
+                    const imgSrc = `/images/heroes/${hero}.png`;
+                    return `
+                        <div class="pick-card ${isSelected ? 'active' : ''}" onclick="selectHero('${activeRole}','${hero}')">
+                            <img src="${imgSrc}" alt="${hero}">
+                            <div class="meta">
+                                <b>${hero}</b><br>
+                                <small>${HERO_ABILITIES[hero] || 'Способность скоро будет описана.'}</small>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                html += `</div>`;
+            }
+
+            const canSave = isDeckComplete();
+            html += `<button class="btn" ${canSave ? '' : 'disabled'} onclick="saveDeck()">💾 Сохранить колоду</button>`;
             document.getElementById('content').innerHTML = html;
             document.getElementById('log').innerHTML = '';
             document.getElementById('battleScene').style.display = 'none';
         }
 
-        function updateDeck(role, hero) {
+        function openRolePicker(role) {
+            activeRole = role;
+            showDeckBuilder();
+        }
+
+        function selectHero(role, hero) {
             currentDeck[role] = hero;
+            showDeckBuilder();
         }
 
         async function saveDeck() {
+            if (!isDeckComplete()) {
+                alert('Выбери героя для каждой роли (Tank, Fighter, DPS, Mage, Support).');
+                return;
+            }
             try {
                 const res = await fetch(`/api/deck?user_id=${FAKE_USER_ID}`, {
                     method: 'POST',
@@ -277,19 +454,20 @@
             document.getElementById('content').style.display = 'none';
             document.getElementById('log').style.display = 'none';
             document.getElementById('battleScene').style.display = 'block';
+            hidePrimaryActions();
             document.getElementById('battleLog').textContent = 'Бой начался...';
 
             try {
                 const res = await fetch(`/api/battle?user_id=${FAKE_USER_ID}`, { method: 'POST' });
                 const data = await res.json();
 
-                const teamA = Object.values(currentDeck);
-                const teamB = ["Bulwark", "Vanguard", "Striker", "Arcanist", "Medic"];
+                const teamA = data.player_team || Object.values(currentDeck);
+                const teamB = data.enemy_team || ["Bulwark", "Vanguard", "Striker", "Arcanist", "Medic"];
 
                 let hpA = {};
                 let hpB = {};
-                teamA.forEach(name => hpA[name] = HERO_STATS[name]);
-                teamB.forEach(name => hpB[name] = HERO_STATS[name]);
+                teamA.forEach(name => hpA[name] = (data.player_max_hp && data.player_max_hp[name]) || HERO_STATS[name]);
+                teamB.forEach(name => hpB[name] = (data.enemy_max_hp && data.enemy_max_hp[name]) || HERO_STATS[name]);
 
                 renderTeam('teamA', teamA, hpA, true);
                 renderTeam('teamB', teamB, hpB, false);
@@ -310,6 +488,7 @@
                             document.getElementById('battleScene').style.display = 'none';
                             document.getElementById('content').style.display = 'block';
                             document.getElementById('log').style.display = 'block';
+                            showPrimaryActions();
                         }, 3000);
                         return;
                     }
@@ -334,8 +513,50 @@
                             showDamagePopup(ev.target, ev.damage, true);
                         }
                     } 
+                    else if (ev.type === "dot") {
+                        logText = `${ev.target} получает ${ev.damage} урона от эффекта!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                            renderTeam('teamB', teamB, hpB, false);
+                            showDamagePopup(ev.target, ev.damage, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                            renderTeam('teamA', teamA, hpA, true);
+                            showDamagePopup(ev.target, ev.damage, true);
+                        }
+                    }
+                    else if (ev.type === "reflect") {
+                        logText = `${ev.attacker} отражает ${ev.damage} урона в ${ev.target}!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                            renderTeam('teamB', teamB, hpB, false);
+                            showDamagePopup(ev.target, ev.damage, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                            renderTeam('teamA', teamA, hpA, true);
+                            showDamagePopup(ev.target, ev.damage, true);
+                        }
+                    }
                     else if (ev.type === "execute") {
-                        logText = `${ev.target} был уничтожен!`;
+                        logText = `${ev.target} был уничтожен ${ev.attacker ? ev.attacker : 'Reaper'}!`;
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = 0;
+                            renderTeam('teamB', teamB, hpB, false);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = 0;
+                            renderTeam('teamA', teamA, hpA, true);
+                        }
+                    } else if (ev.type === "skill") {
+                        logText = `${ev.hero} использует ${ev.ability}!`;
+                        // Каркас под видео-скиллы (пока без обязательного внедрения ассетов)
+                        playSkillVideoFx(ev.ability);
+                        playSkillFx(ev.hero, teamA.includes(ev.hero), ev.ability);
+                        if (Array.isArray(ev.targets)) {
+                            ev.targets.forEach(targetName => {
+                                const isAllyTarget = teamA.includes(targetName);
+                                playSkillFx(targetName, isAllyTarget, ev.ability);
+                            });
+                        }
                     }
 
                     document.getElementById('battleLog').textContent = logText;
@@ -351,6 +572,7 @@
                 document.getElementById('battleScene').style.display = 'none';
                 document.getElementById('content').style.display = 'block';
                 document.getElementById('log').style.display = 'block';
+                showPrimaryActions();
             }
         }
 
@@ -368,7 +590,7 @@
                 return `
                     <div class="${cardClass}" data-name="${name}" style="border-color:${borderColor}; position:relative;">
                         <img src="${imgSrc}" alt="${name}" 
-                             style="width:100%; height:80px; object-fit:cover; border-radius:8px; background:#333;">
+                             style="width:120%; height:440px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
                         <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
                         <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
                         <div class="hp-bar">
@@ -467,6 +689,30 @@
             };
             
             requestAnimationFrame(animate);
+        }
+
+        function playSkillFx(heroName, isAlly, ability) {
+            const containerId = isAlly ? 'teamA' : 'teamB';
+            const container = document.getElementById(containerId);
+            const card = container.querySelector(`[data-name="${heroName}"]`);
+            if (!card) return;
+
+            const fx = SKILL_FX[ability] || { color: '#ffffff' };
+            card.classList.add('skill-flash');
+            card.style.boxShadow = `0 0 16px ${fx.color}`;
+
+            setTimeout(() => {
+                card.classList.remove('skill-flash');
+                card.style.boxShadow = '';
+            }, 600);
+        }
+
+        // Каркас: когда будут готовы webm/mp4 клипы скиллов,
+        // достаточно включить эту функцию в полноценный режим.
+        function playSkillVideoFx(ability) {
+            const videoPath = `${ASSET_PATHS.skillVideos}/${ability}.webm`;
+            // Временный no-op с логом, чтобы было видно, какой файл ожидается
+            console.debug(`Skill video placeholder: ${videoPath}`);
         }
 
         // === РЕЙТИНГ ===

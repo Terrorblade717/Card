@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # =========================
 # КОНФИГУРАЦИЯ
@@ -14,6 +14,7 @@ from pydantic import BaseModel
 PLAYERS_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bot/players.json"))
 BASE_BATTLE_LIMIT = 20
 MAX_EXTRA_BATTLES = 5
+HP_REDUCTION_FACTOR = 1.5
 
 # =========================
 # МОДЕЛИ
@@ -26,7 +27,11 @@ class BattleResponse(BaseModel):
     logs: List[str]
     new_rating: int
     battles_left: int
-    events: List[Dict] = []  # ← КРИТИЧЕСКИ ВАЖНОЕ ИЗМЕНЕНИЕ
+    events: List[Dict] = Field(default_factory=list)  # ← КРИТИЧЕСКИ ВАЖНОЕ ИЗМЕНЕНИЕ
+    player_team: List[str] = Field(default_factory=list)
+    enemy_team: List[str] = Field(default_factory=list)
+    player_max_hp: Dict[str, int] = Field(default_factory=dict)
+    enemy_max_hp: Dict[str, int] = Field(default_factory=dict)
 
 # =========================
 # ИНИЦИАЛИЗАЦИЯ FASTAPI
@@ -101,6 +106,8 @@ class Hero:
         self.barrier = 0
         self.immortal = 0
         self.reflect = 0
+        self.dot_turns = 0
+        self.dot_damage = 0
         self.cooldown = 0
         self.alive = True
 
@@ -114,6 +121,8 @@ class Hero:
         self.barrier = 0
         self.immortal = 0
         self.reflect = 0
+        self.dot_turns = 0
+        self.dot_damage = 0
         self.cooldown = 0
         self.alive = True
 
@@ -138,37 +147,78 @@ class Hero:
                 self.alive = False
 
 # СПОСОБНОСТИ
-def taunt(hero, allies, enemies): hero.taunt = True
+def taunt(hero, allies, enemies):
+    hero.taunt = True
+    return {"targets": [hero.name]}
 def armor_aura(hero, allies, enemies):
     for a in allies: a.armor += 1
+    return {"targets": [a.name for a in allies]}
 def reduce_enemy_damage(hero, allies, enemies):
     for e in enemies: e.atk = max(1, e.atk - 1)
-def barrier(hero, allies, enemies): hero.barrier += 20
-def thorns(hero, allies, enemies): hero.reflect = 0.3
-def line_pressure(hero, allies, enemies): hero.atk += 1.4
-def scaling(hero, allies, enemies): hero.atk += 1
+    return {"targets": [e.name for e in enemies]}
+def barrier(hero, allies, enemies):
+    hero.barrier += 20
+    return {"targets": [hero.name]}
+def thorns(hero, allies, enemies):
+    hero.reflect = 0.3
+    return {"targets": [hero.name]}
+def line_pressure(hero, allies, enemies):
+    hero.atk += 1.4
+    return {"targets": [hero.name]}
+def scaling(hero, allies, enemies):
+    hero.atk += 1
+    return {"targets": [hero.name]}
 def debuff(hero, allies, enemies):
-    if enemies: random.choice(enemies).armor = max(0, random.choice(enemies).armor - 2)
+    if enemies:
+        target = random.choice(enemies)
+        target.armor = max(0, target.armor - 2)
+        return {"targets": [target.name]}
+    return None
 def dot(hero, allies, enemies):
-    if enemies: random.choice(enemies).take_damage(5)
+    if enemies:
+        target = random.choice(enemies)
+        target.dot_turns = 2
+        target.dot_damage = 5
+        return {"targets": [target.name]}
+    return None
 def silence(hero, allies, enemies):
-    if enemies: random.choice(enemies).silence = 1
+    if enemies:
+        target = random.choice(enemies)
+        target.silence = 1
+        return {"targets": [target.name]}
+    return None
 def aoe(hero, allies, enemies):
     for e in enemies: e.take_damage(hero.atk // 2)
+    return {"targets": [e.name for e in enemies]}
 def heal(hero, allies, enemies):
-    if allies: min(allies, key=lambda a: a.hp).hp = min(min(allies, key=lambda a: a.hp).max_hp, min(allies, key=lambda a: a.hp).hp + 25)
+    if allies:
+        target = min(allies, key=lambda a: a.hp)
+        target.hp = min(target.max_hp, target.hp + 25)
+        return {"targets": [target.name]}
+    return None
 def buff(hero, allies, enemies):
     for a in allies: a.atk += 0.5
+    return {"targets": [a.name for a in allies]}
 def immortal(hero, allies, enemies):
-    if allies: random.choice(allies).immortal = 1
+    if allies:
+        target = random.choice(allies)
+        target.immortal = 1
+        return {"targets": [target.name]}
+    return None
 def stun(hero, allies, enemies):
-    if enemies: random.choice(enemies).stun = 1
+    if enemies:
+        target = random.choice(enemies)
+        target.stun = 1
+        return {"targets": [target.name]}
+    return None
 def aoe_stun(hero, allies, enemies):
     if hero.cooldown == 0:
         for e in enemies: e.stun = 1
         hero.cooldown = 3
+        return {"targets": [e.name for e in enemies]}
     else:
         hero.cooldown -= 1
+    return None
 
 # ГЕРОИ
 HEROES = [
@@ -176,7 +226,7 @@ HEROES = [
     Hero("Sentinel","Tank",160,8,5,3,armor_aura),
     Hero("Ironbound","Tank",170,7,6,2,reduce_enemy_damage),
     Hero("Shieldbearer","Tank",165,7,5,2,barrier),
-    Hero("Warden","Tank",200,6,4,1,thorns),
+    Hero("Warden","Tank",270,6,4,1,thorns),
     Hero("Vanguard","Fighter",130,13,4,4,line_pressure),
     Hero("Skirmisher","Fighter",120,14,3,5,None),
     Hero("Duelist","Fighter",115,15,3,5,None),
@@ -199,11 +249,45 @@ HEROES = [
     Hero("Harmonist","Support",115,7,3,3,aoe_stun),
 ]
 
+for hero in HEROES:
+    hero.max_hp = max(1, int(round(hero.max_hp / HP_REDUCTION_FACTOR)))
+    hero.hp = hero.max_hp
+
 def pick_target(attacker, enemies):
     if attacker.name == "Lurker":
         return min(enemies, key=lambda e: e.hp)
     taunters = [e for e in enemies if e.taunt]
     return random.choice(taunters if taunters else enemies)
+
+
+def apply_dot_tick(hero, events):
+    if hero.alive and hero.dot_turns > 0 and hero.dot_damage > 0:
+        old_hp = hero.hp
+        hero.take_damage(hero.dot_damage, ignore_armor=True)
+        hero.dot_turns -= 1
+        damage = old_hp - hero.hp
+        if damage > 0:
+            events.append({
+                "type": "dot",
+                "target": hero.name,
+                "damage": damage,
+                "target_hp": hero.hp,
+            })
+
+
+def trigger_reaper_execute(reaper, enemy_team, events):
+    if not reaper.alive or reaper.name != "Reaper":
+        return
+
+    for e in enemy_team:
+        if e.alive and e.hp > 0 and (e.hp / e.max_hp) < 0.25 and random.random() < 0.2:
+            e.hp = 0
+            e.alive = False
+            events.append({
+                "type": "execute",
+                "attacker": reaper.name,
+                "target": e.name,
+            })
 
 def simulate_battle(team_a, team_b, logger=None):
     if logger is None:
@@ -220,6 +304,9 @@ def simulate_battle(team_a, team_b, logger=None):
         units = sorted(alive_units, key=lambda x: -x.speed)
         for h in units:
             if not h.alive: continue
+            apply_dot_tick(h, events)
+            if not h.alive:
+                continue
             if h.stun > 0:
                 h.stun = 0
                 continue
@@ -230,9 +317,22 @@ def simulate_battle(team_a, team_b, logger=None):
                 return winner, events
             allies = team_a if h in team_a else team_b
             if h.ability and h.silence == 0:
-                h.ability(h, allies, enemies)
+                skill_event = {"type": "skill", "hero": h.name, "ability": h.ability.__name__}
+                payload = h.ability(h, allies, enemies)
+                if payload:
+                    skill_event.update(payload)
+                events.append(skill_event)
             elif h.silence > 0:
                 h.silence = 0
+
+            if h.name == "Reaper":
+                trigger_reaper_execute(h, enemies, events)
+                enemies = [e for e in enemies if e.alive]
+                if not enemies:
+                    winner = h in team_a
+                    events.append({"type": "end", "winner": winner})
+                    return winner, events
+
             target = pick_target(h, enemies)
             
             old_hp = target.hp
@@ -254,16 +354,21 @@ def simulate_battle(team_a, team_b, logger=None):
                     "damage": damage_dealt,
                     "target_hp": target.hp
                 })
-            
-            if h.name == "Reaper":
-                for e in enemies:
-                    if e.alive and e.hp > 0 and (e.hp / e.max_hp) < 0.25 and random.random() < 0.2:
-                        e.hp = 0
-                        e.alive = False
+
+                if target.reflect > 0 and h.alive:
+                    reflected_damage = max(1, int(round(damage_dealt * target.reflect)))
+                    old_attacker_hp = h.hp
+                    h.take_damage(reflected_damage, ignore_armor=True)
+                    reflected = old_attacker_hp - h.hp
+                    if reflected > 0:
                         events.append({
-                            "type": "execute",
-                            "target": e.name
+                            "type": "reflect",
+                            "attacker": target.name,
+                            "target": h.name,
+                            "damage": reflected,
+                            "target_hp": h.hp,
                         })
+            
             if h.name == "Duelist":
                 h.atk += 2
             if h.name == "Striker":
@@ -280,6 +385,7 @@ def simulate_battle(team_a, team_b, logger=None):
                         "damage": extra_dmg,
                         "target_hp": target.hp
                     })
+
         if not any(e.alive for e in team_b):
             events.append({"type": "end", "winner": True})
             return True, events
@@ -383,17 +489,16 @@ async def start_battle(user_id: str):
             text_logs.append(f"{ev['target']} был уничтожен!")
     
     return BattleResponse(
-    winner=winner,
-    logs=text_logs,
-    new_rating=player["rating"],
-    battles_left=battles_left,
-    events=events,
-    # НОВЫЕ ПОЛЯ:
-    player_team=[h.name for h in team_a],
-    enemy_team=[h.name for h in team_b],
-    player_max_hp={h.name: h.max_hp for h in team_a},
-    enemy_max_hp={h.name: h.max_hp for h in team_b}
-)
+        winner=winner,
+        logs=text_logs,
+        new_rating=player["rating"],
+        battles_left=battles_left,
+        events=events,
+        player_team=[h.name for h in team_a],
+        enemy_team=[h.name for h in team_b],
+        player_max_hp={h.name: h.max_hp for h in team_a},
+        enemy_max_hp={h.name: h.max_hp for h in team_b},
+    )
 
 @app.get("/api/rating")
 async def get_rating():
