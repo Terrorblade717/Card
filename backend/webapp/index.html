@@ -90,21 +90,20 @@
         }
         .hp-bar {
             position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: #333;
-            border-radius: 0 0 10px 10px;
+            bottom: 8px;
+            left: 8px;
+            right: 8px;
+            height: 10px;
+            background: rgba(80, 0, 0, 0.7);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.15);
+            overflow: hidden;
         }
         .hp-fill {
             height: 100%;
-            background: #4CAF50;
-            border-radius: 0 0 10px 10px;
+            background: linear-gradient(90deg, #e53935, #ff5252);
+            border-radius: 8px;
             transition: width 0.3s;
-        }
-        .hero-card.enemy .hp-fill {
-            background: #f44336;
         }
         #battleScene {
             display: none;
@@ -173,6 +172,22 @@
             text-align: center;
             font-weight: bold;
         }
+        .battle-controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        .skip-btn {
+            width: auto;
+            min-width: 180px;
+            background: #8e24aa;
+            color: #fff;
+            font-weight: 700;
+            border-radius: 12px;
+            border: none;
+            padding: 10px 14px;
+            cursor: pointer;
+        }
         .damage-popup {
             position: absolute;
             top: -20px;
@@ -222,6 +237,9 @@
                 <div id="teamA" data-label="Моя команда"></div>
             </div>
             <div id="battleLog"></div>
+            <div class="battle-controls">
+                <button id="skipBattleBtn" class="skip-btn" onclick="skipBattleAnimation()">⏩ Пропустить бой</button>
+            </div>
         </div>
 
         <div id="content"></div>
@@ -231,6 +249,8 @@
     <script>
         // === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ===
         let isAnimating = false;
+        let skipBattleRequested = false;
+        let pendingBattleTimeout = null;
 
         // === НАСТРОЙКИ ===
         const API_URL = '';
@@ -250,11 +270,11 @@
 
         // Статы героев (max_hp)
         const HERO_STATS = {
-            "Bulwark": 120, "Sentinel": 107, "Ironbound": 113, "Shieldbearer": 110, "Warden": 180,
-            "Vanguard": 87, "Skirmisher": 80, "Duelist": 77, "Breaker": 83, "Ravager": 87,
-            "Striker": 67, "Blade": 67, "Lurker": 63, "Marksman": 70, "Reaper": 67,
-            "Arcanist": 67, "Hexer": 70, "Channeler": 73, "Summoner": 67, "Voidcaster": 67,
-            "Medic": 80, "Enhancer": 73, "Protector": 80, "Oracle": 70, "Harmonist": 77
+            "Bulwark": 90, "Sentinel": 80, "Ironbound": 85, "Shieldbearer": 82, "Warden": 135,
+            "Vanguard": 65, "Skirmisher": 60, "Duelist": 58, "Breaker": 62, "Ravager": 65,
+            "Striker": 50, "Blade": 50, "Lurker": 48, "Marksman": 52, "Reaper": 50,
+            "Arcanist": 50, "Hexer": 52, "Channeler": 55, "Summoner": 50, "Voidcaster": 50,
+            "Medic": 60, "Enhancer": 55, "Protector": 60, "Oracle": 52, "Harmonist": 58
         };
 
         const SKILL_FX = {
@@ -363,11 +383,19 @@
         function hidePrimaryActions() {
             const actions = document.getElementById('primaryActions');
             if (actions) actions.style.display = 'none';
+            const stats = document.getElementById('stats');
+            if (stats) stats.style.display = 'none';
         }
 
         function showPrimaryActions() {
             const actions = document.getElementById('primaryActions');
             if (actions) actions.style.display = 'block';
+            const stats = document.getElementById('stats');
+            if (stats) stats.style.display = 'block';
+        }
+
+        function skipBattleAnimation() {
+            skipBattleRequested = true;
         }
 
         // === СОБРАТЬ КОЛОДУ ===
@@ -451,6 +479,17 @@
         async function startBattle() {
             if (!confirm('Начать бой?')) return;
 
+            if (pendingBattleTimeout) {
+                clearTimeout(pendingBattleTimeout);
+                pendingBattleTimeout = null;
+            }
+            skipBattleRequested = false;
+            const skipButton = document.getElementById('skipBattleBtn');
+            if (skipButton) {
+                skipButton.disabled = false;
+                skipButton.textContent = '⏩ Пропустить бой';
+            }
+
             document.getElementById('content').style.display = 'none';
             document.getElementById('log').style.display = 'none';
             document.getElementById('battleScene').style.display = 'block';
@@ -475,21 +514,53 @@
                 let eventIndex = 0;
                 const events = data.events || [];
 
+                const finishBattle = () => {
+                    const result = data.winner ? 
+                        `🏆 ПОБЕДА! Новый рейтинг: ${data.new_rating}` : 
+                        `💀 ПОРАЖЕНИЕ. Новый рейтинг: ${data.new_rating}`;
+                    document.getElementById('battleLog').innerHTML = `<b>${result}</b>`;
+                    if (skipButton) {
+                        skipButton.disabled = true;
+                        skipButton.textContent = '✅ Бой завершён';
+                    }
+
+                    pendingBattleTimeout = setTimeout(() => {
+                        loadUserData();
+                        updateUI();
+                        document.getElementById('battleScene').style.display = 'none';
+                        document.getElementById('content').style.display = 'block';
+                        document.getElementById('log').style.display = 'block';
+                        showPrimaryActions();
+                    }, 1400);
+                };
+
+                const applyEventInstant = (ev) => {
+                    if (ev.type === "attack" || ev.type === "dot" || ev.type === "reflect") {
+                        if (hpB[ev.target] !== undefined) {
+                            hpB[ev.target] = Math.max(0, hpB[ev.target] - ev.damage);
+                        } else if (hpA[ev.target] !== undefined) {
+                            hpA[ev.target] = Math.max(0, hpA[ev.target] - ev.damage);
+                        }
+                    } else if (ev.type === "execute") {
+                        if (hpB[ev.target] !== undefined) hpB[ev.target] = 0;
+                        if (hpA[ev.target] !== undefined) hpA[ev.target] = 0;
+                    }
+                };
+
                 const processEvent = () => {
                     if (eventIndex >= events.length) {
-                        const result = data.winner ? 
-                            `🏆 ПОБЕДА! Новый рейтинг: ${data.new_rating}` : 
-                            `💀 ПОРАЖЕНИЕ. Новый рейтинг: ${data.new_rating}`;
-                        document.getElementById('battleLog').innerHTML = `<b>${result}</b>`;
-                        
-                        setTimeout(() => {
-                            loadUserData();
-                            updateUI();
-                            document.getElementById('battleScene').style.display = 'none';
-                            document.getElementById('content').style.display = 'block';
-                            document.getElementById('log').style.display = 'block';
-                            showPrimaryActions();
-                        }, 3000);
+                        finishBattle();
+                        return;
+                    }
+
+                    if (skipBattleRequested) {
+                        for (let i = eventIndex; i < events.length; i++) {
+                            applyEventInstant(events[i]);
+                        }
+                        renderTeam('teamA', teamA, hpA, true);
+                        renderTeam('teamB', teamB, hpB, false);
+                        eventIndex = events.length;
+                        finishBattle();
                         return;
                     }
 
@@ -561,10 +632,10 @@
 
                     document.getElementById('battleLog').textContent = logText;
                     eventIndex++;
-                    setTimeout(processEvent, 800);
+                    pendingBattleTimeout = setTimeout(processEvent, 520);
                 };
 
-                setTimeout(processEvent, 1000);
+                pendingBattleTimeout = setTimeout(processEvent, 350);
 
             } catch (e) {
                 alert('❌ Ошибка боя');
@@ -592,7 +663,6 @@
                         <img src="${imgSrc}" alt="${name}" 
                              style="width:120%; height:440px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
                         <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
-                        <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
                         <div class="hp-bar">
                             <div class="hp-fill" style="width:${percent}%"></div>
                         </div>

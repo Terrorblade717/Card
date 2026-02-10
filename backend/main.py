@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 PLAYERS_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "../bot/players.json"))
 BASE_BATTLE_LIMIT = 20
 MAX_EXTRA_BATTLES = 5
-HP_REDUCTION_FACTOR = 1.5
+HP_REDUCTION_FACTOR = 2.0
 
 # =========================
 # МОДЕЛИ
