@@ -275,11 +275,10 @@ def apply_dot_tick(hero, events):
             })
 
 
-def trigger_reaper_execute(reaper_team, enemy_team, events):
-    reapers = [h for h in reaper_team if h.alive and h.name == "Reaper"]
-    if not reapers:
+def trigger_reaper_execute(reaper, enemy_team, events):
+    if not reaper.alive or reaper.name != "Reaper":
         return
-    reaper = reapers[0]
+
     for e in enemy_team:
         if e.alive and e.hp > 0 and (e.hp / e.max_hp) < 0.25 and random.random() < 0.2:
             e.hp = 0
@@ -325,6 +324,15 @@ def simulate_battle(team_a, team_b, logger=None):
                 events.append(skill_event)
             elif h.silence > 0:
                 h.silence = 0
+
+            if h.name == "Reaper":
+                trigger_reaper_execute(h, enemies, events)
+                enemies = [e for e in enemies if e.alive]
+                if not enemies:
+                    winner = h in team_a
+                    events.append({"type": "end", "winner": winner})
+                    return winner, events
+
             target = pick_target(h, enemies)
             
             old_hp = target.hp
@@ -378,8 +386,6 @@ def simulate_battle(team_a, team_b, logger=None):
                         "target_hp": target.hp
                     })
 
-            trigger_reaper_execute(team_a, team_b, events)
-            trigger_reaper_execute(team_b, team_a, events)
         if not any(e.alive for e in team_b):
             events.append({"type": "end", "winner": True})
             return True, events
