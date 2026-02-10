@@ -18,7 +18,7 @@
         }
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 1400px;
         }
         h1 {
             text-align: center;
@@ -113,33 +113,56 @@
         }
         .battle-field {
             display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 40px;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
         }
         #teamA,
         #teamB {
-            width: calc(50% - 60px);
+            width: 100%;
             display: flex;
             flex-direction: row;
-            gap: 12px;
-            overflow-x: auto;
-            padding-bottom: 4px;
+            justify-content: center;
+            align-items: stretch;
+            gap: 16px;
+            flex-wrap: nowrap;
         }
-        #teamA {
-            justify-content: flex-start;
+        #teamA::before,
+        #teamB::before {
+            content: attr(data-label);
+            position: absolute;
+            margin-top: -24px;
+            font-size: 14px;
+            opacity: 0.8;
         }
-        #teamB {
-            justify-content: flex-end;
-            direction: rtl;
-        }
-        #teamB .hero-card {
-            direction: ltr;
-            text-align: center;
+        #teamA, #teamB {
+            position: relative;
+            padding-top: 20px;
         }
         .hero-card {
-            min-width: 120px;
-            max-width: 120px;
+            min-width: 240px;
+            max-width: 240px;
+        }
+        .role-block { background:#1c1c1c; border:1px solid #333; border-radius:12px; padding:12px; margin-bottom:10px; }
+        .role-head { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+        .pick-grid { display:flex; flex-wrap:wrap; gap:10px; margin-top:12px; }
+        .pick-card {
+            width: 180px;
+            background:#242424;
+            border:1px solid #3a3a3a;
+            border-radius:10px;
+            overflow:hidden;
+            cursor:pointer;
+        }
+        .pick-card img { width:100%; height:180px; object-fit:cover; display:block; }
+        .pick-card .meta { padding:8px; font-size:12px; }
+        .pick-card.active { border-color:#4CAF50; box-shadow:0 0 12px rgba(76,175,80,.5); }
+
+        @media (max-width: 1280px) {
+            .hero-card {
+                min-width: 18.5vw;
+                max-width: 18.5vw;
+            }
         }
         #battleLog {
             margin-top: 15px;
@@ -194,9 +217,9 @@
         <!-- Поле боя (скрыто по умолчанию) -->
         <div id="battleScene">
             <div class="battle-field">
-                <div id="teamA"></div>
+                <div id="teamB" data-label="Вражеская команда"></div>
                 <div style="font-size:24px; color:#4CAF50;">⚔️</div>
-                <div id="teamB"></div>
+                <div id="teamA" data-label="Моя команда"></div>
             </div>
             <div id="battleLog"></div>
         </div>
@@ -269,6 +292,36 @@
             shop: `${ASSET_PATHS.icons}/shop.svg`
         };
 
+        const HERO_ABILITIES = {
+            Bulwark: 'Провокация (таунт) и высокий запас брони.',
+            Sentinel: 'Повышает броню союзных героев.',
+            Ironbound: 'Снижает урон вражеской команды.',
+            Shieldbearer: 'Даёт барьер на здоровье.',
+            Warden: 'Отражает часть входящего урона.',
+            Vanguard: 'Усиливает давление по ходу боя.',
+            Skirmisher: 'Сбалансированный по скорости и урону.',
+            Duelist: 'После каждой атаки получает +2 к урону.',
+            Breaker: 'Игнорирует броню цели.',
+            Ravager: 'Постепенно наращивает атаку.',
+            Striker: 'Каждый ход получает +1 к скорости.',
+            Blade: '25% шанс нанести двойной урон.',
+            Lurker: 'Всегда выбирает цель с наименьшим HP.',
+            Marksman: '10% шанс полностью избежать урона.',
+            Reaper: 'В начале своего хода добивает ослабленных врагов.',
+            Arcanist: '25% шанс провести вторую атаку.',
+            Hexer: 'Ослабляет защиту врага (дебафф).',
+            Channeler: 'Накладывает урон со временем.',
+            Summoner: 'Накладывает запрет на способности.',
+            Voidcaster: 'Бьёт по площади.',
+            Medic: 'Лечит самого раненого союзника.',
+            Enhancer: 'Баффает атаку команды.',
+            Protector: 'Даёт защиту от смерти на 1 удар.',
+            Oracle: 'Оглушает одну цель.',
+            Harmonist: 'Массовый стан по всем врагам.'
+        };
+
+        let activeRole = null;
+
         // === ИНИЦИАЛИЗАЦИЯ ===
         async function init() {
             await loadUserData();
@@ -299,7 +352,12 @@
             `;
 
             const battleBtn = document.getElementById('battleBtn');
-            battleBtn.disabled = !userData.deck || Object.keys(userData.deck).length === 0 || userData.battles_left <= 0;
+            battleBtn.disabled = !isDeckComplete(userData.deck) || userData.battles_left <= 0;
+        }
+
+        function isDeckComplete(deckObj = currentDeck) {
+            const roles = ["Tank", "Fighter", "DPS", "Mage", "Support"];
+            return roles.every(role => !!deckObj?.[role]);
         }
 
         function hidePrimaryActions() {
@@ -314,29 +372,62 @@
 
         // === СОБРАТЬ КОЛОДУ ===
         function showDeckBuilder() {
-            let html = '<h3>Выберите героев:</h3>';
-            for (const [role, heroes] of Object.entries(HEROES_BY_ROLE)) {
-                const selected = currentDeck[role] || heroes[0];
+            let html = '<h3>Соберите колоду (1 герой на роль):</h3>';
+            for (const role of Object.keys(HEROES_BY_ROLE)) {
+                const selected = currentDeck[role];
                 html += `
-                    <label>${role}:</label>
-                    <select onchange="updateDeck('${role}', this.value)">
-                        ${heroes.map(h => 
-                            `<option value="${h}" ${h === selected ? 'selected' : ''}>${h}</option>`
-                        ).join('')}
-                    </select>
+                    <div class="role-block">
+                        <div class="role-head">
+                            <div>
+                                <b>${role}</b><br>
+                                <small>${selected ? `Выбран: ${selected}` : 'Герой не выбран'}</small>
+                            </div>
+                            <button class="btn" onclick="openRolePicker('${role}')">Выбрать ${role}</button>
+                        </div>
+                    </div>
                 `;
             }
-            html += `<button class="btn" onclick="saveDeck()">💾 Сохранить колоду</button>`;
+
+            if (activeRole) {
+                html += `<h4>Выбор роли: ${activeRole}</h4><div class="pick-grid">`;
+                html += HEROES_BY_ROLE[activeRole].map(hero => {
+                    const isSelected = currentDeck[activeRole] === hero;
+                    const imgSrc = `/images/heroes/${hero}.png`;
+                    return `
+                        <div class="pick-card ${isSelected ? 'active' : ''}" onclick="selectHero('${activeRole}','${hero}')">
+                            <img src="${imgSrc}" alt="${hero}">
+                            <div class="meta">
+                                <b>${hero}</b><br>
+                                <small>${HERO_ABILITIES[hero] || 'Способность скоро будет описана.'}</small>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                html += `</div>`;
+            }
+
+            const canSave = isDeckComplete();
+            html += `<button class="btn" ${canSave ? '' : 'disabled'} onclick="saveDeck()">💾 Сохранить колоду</button>`;
             document.getElementById('content').innerHTML = html;
             document.getElementById('log').innerHTML = '';
             document.getElementById('battleScene').style.display = 'none';
         }
 
-        function updateDeck(role, hero) {
+        function openRolePicker(role) {
+            activeRole = role;
+            showDeckBuilder();
+        }
+
+        function selectHero(role, hero) {
             currentDeck[role] = hero;
+            showDeckBuilder();
         }
 
         async function saveDeck() {
+            if (!isDeckComplete()) {
+                alert('Выбери героя для каждой роли (Tank, Fighter, DPS, Mage, Support).');
+                return;
+            }
             try {
                 const res = await fetch(`/api/deck?user_id=${FAKE_USER_ID}`, {
                     method: 'POST',
@@ -499,7 +590,7 @@
                 return `
                     <div class="${cardClass}" data-name="${name}" style="border-color:${borderColor}; position:relative;">
                         <img src="${imgSrc}" alt="${name}" 
-                             style="width:120%; height:220px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
+                             style="width:120%; height:440px; object-fit:cover; border-radius:8px; background:#333; margin-left:-10%;">
                         <div style="font-weight:bold; margin-top:4px; font-size:14px;">${name}</div>
                         <div style="font-size:12px;">HP: ${currentHp}/${maxHp}</div>
                         <div class="hp-bar">
